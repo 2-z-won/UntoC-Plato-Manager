@@ -48,7 +48,17 @@ def parse_courses_entry(session):
 
 # 날짜/시간 문자열 파싱
 def parse_datetime_string(text):
-    return None if text == "-" else datetime.strptime(text, "%Y-%m-%d %H:%M")
+    try:
+        if text == "-" or not text:
+            return None
+        text = text.replace('T', ' ')
+        return datetime.strptime(text, "%Y-%m-%d %H:%M")
+    except Exception as e:
+        print(f"Error occurred while parsing datetime string: {text}")
+        print(f"Error details: {str(e)}")
+        return None
+
+
 
 
 # 강좌 자료 파싱
@@ -124,17 +134,25 @@ class TestView(APIView):
             courses = parse_courses_entry(session)
             parse_courses_materials(session, courses)
 
-            result_data = [{
-                "course_name": course.course_name,
-                "quizzes": [{"title": quiz.title, "due": quiz.due} for quiz in course.quizzes],
-                "videos": [{"title": video.title} for video in course.videos],
-                "homeworks": [{"title": homework.title, "due": homework.due} for homework in course.homeworks]
-            } for course in courses]
+            result_data = []
+            for course in courses:
+                # 코스에 대한 정보를 담을 딕셔너리 생성
+                course_data = {"course_name": course.course_name}
 
-            return JsonResponse({
-                "status": "OK",
-                "message": "성공하였습니다.",
-                "data": result_data
-            })
+                # 퀴즈, 비디오, 과제가 하나라도 있는 경우만 해당 정보 추가
+                if course.quizzes or course.videos or course.homeworks:
+                    if course.quizzes:
+                        course_data["quizzes"] = [{"title": quiz.title, "due": quiz.due.strftime("%Y-%m-%d %H:%M:%S")} if quiz.due else {"title": quiz.title} for quiz in course.quizzes]
+
+                    if course.videos:
+                        course_data["videos"] = [{"title": video.title} for video in course.videos]
+
+                    if course.homeworks:
+                        course_data["homeworks"] = [{"title": homework.title, "due": homework.due.strftime("%Y-%m-%d %H:%M:%S")} if homework.due else {"title": homework.title} for homework in course.homeworks]
+
+                    # 해당 정보가 있는 경우에만 결과에 추가
+                    result_data.append(course_data)
+
+            return JsonResponse({"data": result_data})
         except Exception as e:
             return JsonResponse({"error": "내부 서버 오류", "details": str(e)}, status=500)
